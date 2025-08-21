@@ -65,12 +65,12 @@ fn main() -> Result<()> {
             } else {
                 size += meta.len();
             }
-            backlog.push((e.path(), meta.clone()));
+            backlog.push(e.path());
         }
     }
     log::info!("Total: {size} in {} entries", backlog.len());
     let mut o = std::io::stdout();
-    for (n, (path, meta)) in backlog.into_iter().enumerate() {
+    for path in backlog.into_iter() {
         o.write_all(path.as_os_str().as_bytes())?;
         o.write_all(b"\0")?;
     }
