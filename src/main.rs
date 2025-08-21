@@ -68,7 +68,20 @@ fn main() -> Result<()> {
             backlog.push(e.path());
         }
     }
-    log::info!("Total: {size} in {} entries", backlog.len());
+
+    {
+        use num_format::ToFormattedString;
+        let locale = num_format::SystemLocale::default()?;
+
+        let bs = bytesize::ByteSize(size);
+        log::info!(
+            "Total: {} ({}) in {} entries",
+            bs.display().si(),
+            bs,
+            backlog.len().to_formatted_string(&locale)
+        );
+    }
+
     let mut o = std::io::stdout();
     for path in backlog.into_iter() {
         o.write_all(path.as_os_str().as_bytes())?;
