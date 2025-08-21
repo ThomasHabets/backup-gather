@@ -1,8 +1,18 @@
+//! cargo build &&  ./target/debug/backup-gather . | tar cf - --no-recursion --null --files-from=-  | tar tvf -
 use anyhow::Result;
+use clap::Parser;
+use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
 
 const NO_BACKUP: &str = ".no-backup";
 const CARGO_TOML: &str = "Cargo.toml";
 const TARGET: &str = "target";
+
+#[derive(Parser)]
+#[command(version)]
+struct Opt {
+    dirs: Vec<std::path::PathBuf>,
+}
 
 #[derive(Default)]
 struct Directory {
@@ -16,13 +26,13 @@ fn read_dir(dir: &std::path::Path) -> Result<Directory> {
     let mut rust = false;
     for entry in l.into_iter() {
         let entry = entry?;
-        let meta = entry.metadata()?;
         match entry.path().file_name() {
             Some(x) if x == NO_BACKUP => return Ok(Directory::default()),
             Some(x) if x == CARGO_TOML => rust = true,
             Some(_) => {},
             None => panic!("Huh, no file name?"),
         }
+        let meta = entry.metadata()?;
         entries.push((entry, meta));
     }
     Ok(Directory {
@@ -30,18 +40,61 @@ fn read_dir(dir: &std::path::Path) -> Result<Directory> {
         entries: entries,
     })
 }
+
 fn main() -> Result<()> {
-    let mut dirs: Vec<std::path::PathBuf> = [".".into()].into();
+    let opt = Opt::parse();
+     stderrlog::new()
+        .module(module_path!())
+        .quiet(false)
+        .verbosity(3)
+        .timestamp(stderrlog::Timestamp::Second)
+        .init()?;
+
+    let mut backlog = Vec::new();
+    let mut dirs = opt.dirs.clone();
+
+    let mut size = 0u64;
     while let Some(dir) = dirs.pop() {
         let read = read_dir(&dir)?;
         for (e, meta) in read.entries.iter() {
-            println!("{:?} {}", e.file_name(), meta.is_dir());
+            //println!("{:?} {}", e.file_name(), meta.is_dir());
             if meta.is_dir() {
                 if !(read.rust && e.file_name() == TARGET) {
                     dirs.push(e.path());
                 }
+                continue;
+            } else {
+                size += meta.len();
             }
+            backlog.push((e.path(), meta.clone()));
         }
     }
+    log::info!("Total: {size} in {} entries", backlog.len());
+    //let mut tar = tar::Builder::new(std::io::stdout());
+    let base: std::path::PathBuf = "/".into();
+    let mut o = std::io::stdout();
+    for (n, (path, meta)) in backlog.into_iter().enumerate() {
+        o.write_all(path.as_os_str().as_bytes())?;
+        o.write_all(b"\0")?;
+        continue;
+        /*
+        let mut head = tar::Header::new_gnu();
+        let ipath = path.strip_prefix(&base)?;
+        //eprintln!("{path:?} => {ipath:?}");
+        //head.set_path(&ipath)?;
+        head.set_metadata(&meta);
+        head.set_cksum();
+        if meta.is_dir() {
+            let mut data: &[u8] = &[];
+            tar.append(&head, data)?;
+        } else if meta.is_symlink() {
+        } else {
+            head.set_size(meta.len());
+            let ifile = std::fs::File::open(&path)?;
+            tar.append_data(&mut head, ipath, ifile)?;
+        }
+        */
+    }
+    //tar.finish()?;
     Ok(())
 }

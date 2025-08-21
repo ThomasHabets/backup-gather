@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.99"
 clap = { version = "4.5.45", features = ["derive"] }
+log = "0.4.27"
 stderrlog = "0.6.0"
