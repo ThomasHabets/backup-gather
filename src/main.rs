@@ -12,6 +12,14 @@ const TARGET: &str = "target";
 #[command(version)]
 struct Opt {
     dirs: Vec<std::path::PathBuf>,
+
+    /// No output.
+    #[arg(short)]
+    n: bool,
+
+    /// Separate output files with newline instead of null.
+    #[arg(long)]
+    nl: bool,
 }
 
 #[derive(Default)]
@@ -82,10 +90,17 @@ fn main() -> Result<()> {
         );
     }
 
-    let mut o = std::io::stdout();
-    for path in backlog.into_iter() {
-        o.write_all(path.as_os_str().as_bytes())?;
-        o.write_all(b"\0")?;
+    if !opt.n {
+        let mut o = std::io::stdout();
+        for path in backlog.into_iter() {
+            o.write_all(path.as_os_str().as_bytes())?;
+            if opt.nl {
+                o.write_all(b"\n")?;
+            } else {
+                o.write_all(b"\0")?;
+            }
+        }
+        o.flush()?;
     }
     Ok(())
 }
