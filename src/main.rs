@@ -29,7 +29,7 @@ fn read_dir(dir: &std::path::Path) -> Result<Directory> {
         match entry.path().file_name() {
             Some(x) if x == NO_BACKUP => return Ok(Directory::default()),
             Some(x) if x == CARGO_TOML => rust = true,
-            Some(_) => {},
+            Some(_) => {}
             None => panic!("Huh, no file name?"),
         }
         let meta = entry.metadata()?;
@@ -43,7 +43,7 @@ fn read_dir(dir: &std::path::Path) -> Result<Directory> {
 
 fn main() -> Result<()> {
     let opt = Opt::parse();
-     stderrlog::new()
+    stderrlog::new()
         .module(module_path!())
         .quiet(false)
         .verbosity(3)
@@ -57,7 +57,6 @@ fn main() -> Result<()> {
     while let Some(dir) = dirs.pop() {
         let read = read_dir(&dir)?;
         for (e, meta) in read.entries.iter() {
-            //println!("{:?} {}", e.file_name(), meta.is_dir());
             if meta.is_dir() {
                 if !(read.rust && e.file_name() == TARGET) {
                     dirs.push(e.path());
@@ -70,31 +69,10 @@ fn main() -> Result<()> {
         }
     }
     log::info!("Total: {size} in {} entries", backlog.len());
-    //let mut tar = tar::Builder::new(std::io::stdout());
-    let base: std::path::PathBuf = "/".into();
     let mut o = std::io::stdout();
     for (n, (path, meta)) in backlog.into_iter().enumerate() {
         o.write_all(path.as_os_str().as_bytes())?;
         o.write_all(b"\0")?;
-        continue;
-        /*
-        let mut head = tar::Header::new_gnu();
-        let ipath = path.strip_prefix(&base)?;
-        //eprintln!("{path:?} => {ipath:?}");
-        //head.set_path(&ipath)?;
-        head.set_metadata(&meta);
-        head.set_cksum();
-        if meta.is_dir() {
-            let mut data: &[u8] = &[];
-            tar.append(&head, data)?;
-        } else if meta.is_symlink() {
-        } else {
-            head.set_size(meta.len());
-            let ifile = std::fs::File::open(&path)?;
-            tar.append_data(&mut head, ipath, ifile)?;
-        }
-        */
     }
-    //tar.finish()?;
     Ok(())
 }
