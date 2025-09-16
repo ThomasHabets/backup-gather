@@ -1,6 +1,14 @@
 //! cargo build &&  ./target/debug/backup-gather . | tar cf - --no-recursion --null --files-from=-  | tar tvf -
+//!
+//! TODO: Automatically exclude path patterns;
+//! * ~/.cache/**
+//! * ~/.thumbnails/**
+//! * ~/.mozilla/firefox/*/Cache/**
+//! * ~/.local/share/Trash/**
 use anyhow::Result;
 use clap::Parser;
+use regex::Regex;
+
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 
@@ -20,6 +28,15 @@ struct Opt {
     /// Separate output files with newline instead of null.
     #[arg(long)]
     nl: bool,
+
+    /// Skip files matching regex.
+    #[arg(long, default_values=["[.].*[.]sw[op]", ".*~"], value_parser=parse_anchor_regex)]
+    skip: Vec<Regex>,
+}
+
+/// Custom parser: ensure full-string match by anchoring ^...$
+fn parse_anchor_regex(input: &str) -> Result<Regex, String> {
+    Regex::new(&format!("^(?:{input})$")).map_err(|e| e.to_string())
 }
 
 #[derive(Default)]
@@ -28,8 +45,8 @@ struct Directory {
     entries: Vec<(std::fs::DirEntry, std::fs::Metadata)>,
 }
 
-fn read_dir(dir: &std::path::Path) -> Result<Directory> {
-    let l = std::fs::read_dir(&dir)?;
+fn read_dir(dir: &std::path::Path, skip: &[Regex]) -> Result<Directory> {
+    let l = std::fs::read_dir(dir)?;
     let mut entries = Vec::new();
     let mut rust = false;
     for entry in l.into_iter() {
@@ -37,16 +54,20 @@ fn read_dir(dir: &std::path::Path) -> Result<Directory> {
         match entry.path().file_name() {
             Some(x) if x == NO_BACKUP => return Ok(Directory::default()),
             Some(x) if x == CARGO_TOML => rust = true,
-            Some(_) => {}
+            Some(filename) => {
+                // TODO: what should we do with filenames that are not valid
+                // strings?
+                let filename = filename.to_string_lossy();
+                if skip.iter().any(|re| re.is_match(&filename)) {
+                    continue;
+                }
+            }
             None => panic!("Huh, no file name?"),
         }
         let meta = entry.metadata()?;
         entries.push((entry, meta));
     }
-    Ok(Directory {
-        rust: rust,
-        entries: entries,
-    })
+    Ok(Directory { rust, entries })
 }
 
 fn main() -> Result<()> {
@@ -63,8 +84,8 @@ fn main() -> Result<()> {
 
     let mut size = 0u64;
     while let Some(dir) = dirs.pop() {
-        let read = read_dir(&dir)?;
-        for (e, meta) in read.entries.iter() {
+        let read = read_dir(&dir, &opt.skip)?;
+        for (e, meta) in read.entries.into_iter() {
             if meta.is_dir() {
                 if !(read.rust && e.file_name() == TARGET) {
                     dirs.push(e.path());
